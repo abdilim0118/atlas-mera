@@ -13,6 +13,10 @@ const DEV_IMAGE_URLS = [
 ];
 
 const IMAGE_EXT_RE = /\.(jpg|jpeg|png|webp|gif|bmp|avif)$/i;
+const BUCKET_CACHE_TTL_MS = Number(process.env.IMAGE_LIST_CACHE_MS || 60_000);
+
+let cachedBucketImages: { id: number; imageUrl: string }[] | null = null;
+let bucketCacheAt = 0;
 
 function getPublicImageUrl(key: string): string {
   const base = (
@@ -47,11 +51,12 @@ async function listBucketImages() {
     }
   });
 
+  const maxKeys = Number(process.env.TOS_MAX_KEYS || 200);
   const result = await client.send(
     new ListObjectsV2Command({
       Bucket: bucket,
       Prefix: prefix,
-      MaxKeys: 1000
+      MaxKeys: Number.isFinite(maxKeys) ? maxKeys : 200
     })
   );
 
@@ -66,15 +71,30 @@ async function listBucketImages() {
   }));
 }
 
+async function listBucketImagesCached() {
+  const now = Date.now();
+  if (cachedBucketImages && now - bucketCacheAt < BUCKET_CACHE_TTL_MS) {
+    return cachedBucketImages;
+  }
+  const images = await listBucketImages();
+  cachedBucketImages = images;
+  bucketCacheAt = now;
+  return images;
+}
+
 export async function GET() {
   const isProduction = process.env.NODE_ENV === "production";
 
   if (isProduction) {
     try {
-      const bucketImages = await listBucketImages();
+      const bucketImages = await listBucketImagesCached();
       return NextResponse.json({
         success: true,
         data: bucketImages
+      }, {
+        headers: {
+          "Cache-Control": "public, max-age=60, stale-while-revalidate=300"
+        }
       });
     } catch (error) {
       console.error("Error listing bucket images:", error);

@@ -16,6 +16,8 @@ export default function Home() {
   const { isOpen, mounted, toggle } = useSidebar();
 
   useEffect(() => {
+    let cancelled = false;
+
     const fetchImages = async () => {
       try {
         const response = await fetch('/api/images');
@@ -26,17 +28,32 @@ export default function Home() {
             imageUrl: img.imageUrl || ''
           }));
 
-          const materialsWithSizes = await loadImageDimensionsBatch(transformed);
-          setMaterials(materialsWithSizes);
+          // Render immediately, then fill in dimensions asynchronously.
+          if (!cancelled) {
+            setMaterials(transformed);
+          }
+          void loadImageDimensionsBatch(transformed)
+            .then((materialsWithSizes) => {
+              if (!cancelled) {
+                setMaterials(materialsWithSizes);
+              }
+            })
+            .catch(() => {});
         }
       } catch (error) {
         console.error('Error fetching images:', error);
       } finally {
-        setIsLoading(false);
+        if (!cancelled) {
+          setIsLoading(false);
+        }
       }
     };
 
     fetchImages();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleToggle = toggle;

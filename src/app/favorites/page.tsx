@@ -61,8 +61,12 @@ export default function FavoritesPage() {
           favIds.includes(String(material.id))
         );
 
-        const materialsWithSizes = await loadImageDimensionsBatch(favMaterials);
-        setMaterials(materialsWithSizes);
+        setMaterials(favMaterials);
+        void loadImageDimensionsBatch(favMaterials)
+          .then((materialsWithSizes) => {
+            setMaterials(materialsWithSizes);
+          })
+          .catch(() => {});
       }
     } catch (error) {
       console.error('Error fetching favorites:', error);
